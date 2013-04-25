@@ -1,0 +1,3 @@
+true: syntax(camlp4o)
+true: package(core,sexplib,sexplib.syntax,yojson,cow,cow.syntax)
+true: thread,annot,debug
