@@ -21,22 +21,6 @@ module JsonCache = struct
   let get ~key = Hashtbl.find_exn cache key
 end
 
-module type Jsonable = sig
-  type t
-  val t_of_json : Json.t -> t
-  val json_of_t : t -> Json.t
-  val key_of : t -> string
-end
-
-(* TODO : get rid of this functor *)
-module WithCache (J : Jsonable) = struct
-  open J
-  let of_json s = 
-    let t = s |> Json.of_string |> t_of_json in
-    JsonCache.set ~key:(key_of t) ~json:s; t
-  let to_json t = JsonCache.get ~key:(key_of t)
-end
-
 module Product = struct
   include BS (* FIXME *)
   type t = {
@@ -49,17 +33,18 @@ module Product = struct
 end
 
 module Listing = struct
-  module L = struct
-    include BS (* FIXME *)
-    type t = {
-      title : string;
-      manufacturer : string;
-      currency : string; (* only needed for 1 example *)
-      price : string } with json, sexp
-    let key_of { title; manufacturer; price ; currency } =
-      title ^ manufacturer ^ price ^ currency
-  end
-  include WithCache(L) include L
+  include BS (* FIXME *)
+  type t = {
+    title : string;
+    manufacturer : string;
+    currency : string; (* only needed for 1 example *)
+    price : string } with json, sexp
+  let key_of { title; manufacturer; price ; currency } =
+    title ^ manufacturer ^ price ^ currency
+  let of_json s = 
+    let t = s |> Json.of_string |> t_of_json in
+    JsonCache.set ~key:(key_of t) ~json:s; t
+  let to_json t = JsonCache.get ~key:(key_of t)
 end
 
 open Core.Std
