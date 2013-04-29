@@ -1,3 +1,5 @@
 true: syntax(camlp4o)
-true: package(core,sexplib,sexplib.syntax,yojson,cow,cow.syntax)
+true: package(core,sexplib,sexplib.syntax,cow,cow.syntax,str,kaputt,parmap)
 true: thread,annot,debug
+<lib_test/**/*.mlt>: kaputt
+<lib> or <lib_test>: include
