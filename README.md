@@ -6,7 +6,7 @@ Intro
 The general approach that I used to tackle this challenge is called a
 Vector Space Search Engine. I first learned about this technique as a
 method for breaking image captchas and since then I've always found it
-to be neat, easy to implement, and nicely configurable.
+to be neat, easy to implement, and has enough parameters to tweak.
 
 Strategy
 ---------
@@ -29,10 +29,16 @@ For each bucket the strategy is as folows:
   (Possibly faulty assumption)
 
 
-Dependencies
+Instructions
 ------------
-* OPAM, get @ `http://opam.ocamlpro.com/doc/Quick_Install.html`
+This is a little bit over complicated because the ocaml eco system
+isn't exactly big but once you get opam working it should be easy.
+
+* `sudo apt-get install ocaml` You need some random version of OCaml to
+   compile OPAM
+* OPAM, get @ `http://opam.ocamlpro.com/doc/Quick_Install.html`.
 * OCaml 4.00.1, install this with opam by doing `opam switch 4.00.1`
+* execute `./install_deps.sh` which will install:
 * core - a decent std lib for OCaml
 * sexplib - pretty print some stuff (was useful for debugging)
 * cow - json lib

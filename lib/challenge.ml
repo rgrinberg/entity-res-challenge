@@ -2,7 +2,6 @@ open Cow
 open Core.Std
 open Fine_structure
 
-
 (* make minor collections less frequent since we do allocate a lot of
    intermediate data structures *)
 let () = Gc.tune ~minor_heap_size:2_000_000 ()
@@ -36,8 +35,6 @@ module List = struct
     | [] -> raise (Invalid_argument "max_by cannot take empty list")
     | x::xs -> loop x (f x) xs
 end
-
-type token = string list
 
 module JsonCache = struct
   let cache = String.Table.create ~size:20_000 ()
