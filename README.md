@@ -86,7 +86,6 @@ Further Improvements
   necessary that could be eliminated.
 
 * There are tons and tons of intermediate allocations that are not necessary.
-  Part of it is a by part of exploratory programming in FP which overuses
+  Part of it is a by product of exploratory programming in FP which overuses
   linked lists somewhat. I could easily cut the performance in half by 
   replacing some lists with iterables for example.
-
