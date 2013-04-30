@@ -43,6 +43,14 @@ module Hash_vector = struct
   let of_list s = 
     let v = new_vector () in
     s |> List.iter ~f:(incr_coord v); v
+
+  let of_weighted_list s ~weights = 
+    let s = of_list s in
+    weights |> List.iter ~f:(fun (coord, weight) ->
+        match Hashtbl.find s coord with 
+        | None -> ()
+        | Some w -> w := (!w) * weight); s
+
   let inner_product t1 t2 = 
     let ip = ref 0 in
     t1 |> Hashtbl.iter ~f:(fun ~key ~data -> 
@@ -125,7 +133,7 @@ module Sorted_array = struct
       ip := (!ip) + ((!matches1) * (!matches2))
     done;
     !ip |> Float.of_int
-      
+
   let cos_theta = Default.cos_theta_2 inner_product norm
 end
 

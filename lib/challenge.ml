@@ -53,10 +53,17 @@ module Product = struct
     model : string;
   } with json, sexp
   let of_json s = s |> Json.of_string |> t_of_json
-  let to_vector {product_name; family; model; _} = 
+  let to_vector {product_name; family; model; manufacturer; _} = 
     let family = Option.value family ~default:"" in
-    String.concat ~sep:" " [product_name; family; model]
-    |> Token.tokenize |> V.of_list
+    let (t_model, t_family, t_product_name, t_manufacturer) =
+      Token.(tokenize model, tokenize family, tokenize product_name,
+             tokenize manufacturer) in
+    let weights = List.concat [
+        t_model        |> List.map ~f:(fun x -> (x, 10));
+        t_manufacturer |> List.map ~f:(fun x -> (x, 0))
+      ] in 
+    V.of_weighted_list (List.concat [t_model; t_family; t_product_name])
+      ~weights
 end
 
 module Listing = struct
@@ -130,34 +137,6 @@ let manufacturer_pairs product_bucket listing_bucket =
             then Some (manup, manul)
             else None)
       in matches @ c)
-
-(* unused *)
-let unify_manufacturers () =
-  let threshold = Fine_structure.manufacturer_match in
-  let match_count = ref 0 in
-  let matched_prods = ref String.Set.empty in
-  let all_prods = ref String.Set.empty in
-  product_bucket |> 
-  Hashtbl.iter ~f:(fun ~key:manup ~data:prod ->
-      let prod = !prod |> List.hd_exn in
-      let vp = manup |> Token.tokenize |> V.of_list in
-      let matched = ref false in
-      listing_bucket |> Hashtbl.iter ~f:(fun ~key:manul ~data:_ ->
-          let vl = manul |> Token.tokenize |> V.of_list in
-          if (V.cos_theta vl vp) > threshold then begin
-            incr match_count;
-            let ps = vp |> V.sexp_of_t |> Sexp.to_string_hum in
-            let vs = vl |> V.sexp_of_t |> Sexp.to_string_hum in
-            Printf.printf "(Product, Listing) = (%s,%s)\n" ps vs;
-            matched := true end
-        );
-      all_prods := Set.add !all_prods prod.Product.manufacturer;
-      if !matched then 
-        matched_prods := Set.add !matched_prods prod.Product.manufacturer);
-  printf "Match count: %d\n" !match_count;
-  print_endline "Unmatched products:";
-  let print_prod p = printf "- %s\n" p in
-  (Set.diff !all_prods !matched_prods) |> Set.iter ~f:print_prod
 
 let unify_manufacturers () =
   let l = manufacturer_pairs product_bucket listing_bucket in
