@@ -2,6 +2,11 @@ open Cow
 open Core.Std
 open Fine_structure
 
+
+(* make minor collections less frequent since we do allocate a lot of
+   intermediate data structures *)
+let () = Gc.tune ~minor_heap_size:2_000_000 ()
+
 (* This is necessary because Cow generates code that relies on the compiler's
    stdlib. While I use the 3rd party stdlib from janestreet: core. It's
    customary to use it since it's better designed and more complete but now I
@@ -11,9 +16,9 @@ module List = struct
   include List
   let mem_assoc = Caml.List.mem_assoc
   let assoc     = Caml.List.assoc
-  (* an ommision from the core that I'm adding in myself *)
+
   let group_by l ~f =
-    let h = Hashtbl.Poly.create ~size:50 () in
+    let h = Hashtbl.Poly.create ~size:200 () in
     l |> List.iter ~f:(fun x ->
         let l = Hashtbl.find_or_add h (f x) ~default:(fun () -> ref []) in
         l := x :: (!l));
@@ -45,7 +50,6 @@ module JsonCache = struct
 end
 
 module Product = struct
-  include BS (* FIXME *)
   type t = {
     product_name : string;
     manufacturer : string;
@@ -67,7 +71,6 @@ module Product = struct
 end
 
 module Listing = struct
-  include BS (* FIXME *)
   type t = {
     title : string;
     manufacturer : string;
@@ -113,8 +116,7 @@ let parser_of ~parse ~bucket ~get_m x =
   let parsed = parse x in 
   let manu = get_m parsed in
   let items = Hashtbl.find_or_add bucket manu~default:(fun () -> ref []) in 
-  items := parsed :: !(items);
-  parsed
+  items := parsed :: !(items); parsed
 
 let (products, listings) = 
   (parse_file product_p (
@@ -124,34 +126,37 @@ let (products, listings) =
      parser_of ~parse:Listing.of_json ~bucket:listing_bucket
        ~get_m:(fun {Listing.manufacturer;_} -> manufacturer)))
 
-let manufacturer_pairs product_bucket listing_bucket = 
+let unify_manufacturers () = 
   let threshold = Fine_structure.manufacturer_match in
   let vectorize l = l |> Token.tokenize |> V.of_list in
-  product_bucket |> Hashtbl.fold ~init:[] ~f:(fun ~key:manup ~data:prod c ->
+  let matched = ref String.Set.empty in
+  let listing_manus = Hashtbl.keys listing_bucket in
+  let results =
+    product_bucket |> Hashtbl.fold ~init:[] ~f:(fun ~key:manup ~data:prod c ->
       let vp = vectorize manup in
       let matches = 
-        listing_bucket
-        |> Hashtbl.keys 
+        listing_manus
         |> List.filter_map ~f:(fun manul ->
             if (V.cos_theta (vectorize manul) vp) > threshold
-            then Some (manup, manul)
+            then begin
+              matched := Set.add (!matched) manul;
+              Some (manup, manul)
+            end
             else None)
-      in matches @ c)
-
-let unify_manufacturers () =
-  let l = manufacturer_pairs product_bucket listing_bucket in
-  printf "Matches: %d\n" (List.length l); l
+      in matches @ c) |> ref in
+  let unmatched = Set.diff (String.Set.of_list (listing_manus)) !matched in
+  product_bucket |> Hashtbl.keys |> List.iter ~f:(fun manup -> 
+      unmatched |> Set.iter ~f:(fun manul ->
+          results := (manup, manul) :: (!results)));
+      !results
 
 let match_up manup manuls =
-  let threshold = Fine_structure.listing_match in
   let matches = ref 0 in
-  let total_results = ref [] in
   (* collect matches in this hash table *)
   let products_classifier = String.Table.create ~size:50 () in
   (* pre compute vectors for products *)
   let products = find_bucket product_bucket manup 
                  |> List.map ~f:(fun x -> (x, Product.to_vector x)) in
-  let matches = ref 0 in
   manuls |> List.iter ~f:(fun manul ->
       (find_bucket listing_bucket manul) |> List.iter ~f:(fun listing ->
           let listing_v = Listing.to_vector listing in
@@ -173,11 +178,8 @@ let match_up manup manuls =
 
 let () = 
   let open List in
-  printf "Have: %d products and %d listings\n"
-    (length products) (length listings);
-  printf "Manufacturers: (products,listings) = (%d, %d)\n"
-    (Hashtbl.length product_bucket) (Hashtbl.length listing_bucket);
   let manus = unify_manufacturers () in
+
   let matches = Parmap.L(manus |> List.group_by ~f:fst)
                 |> Parmap.parmap ~ncores
                   (fun (p, pairs) -> let ls = List.map pairs ~f:snd in
@@ -189,5 +191,4 @@ let () =
       Out_channel.output_char out '[';
       matches |> List.concat_map ~f:fst |> String.concat ~sep:",\n"
       |> Out_channel.output_string out;
-      Out_channel.output_char out ']'
-    )
+      Out_channel.output_char out ']')
