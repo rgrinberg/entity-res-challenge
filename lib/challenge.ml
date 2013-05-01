@@ -47,7 +47,6 @@ module JsonCache = struct
 end
 
 module Product = struct
-  let t_of_json _ = failwith ""
   type t = {
     product_name : string;
     manufacturer : string;
@@ -69,7 +68,6 @@ module Product = struct
 end
 
 module Listing = struct
-  let t_of_json _ = failwith ""
   type t = {
     title : string;
     manufacturer : string;
