@@ -47,6 +47,7 @@ module JsonCache = struct
 end
 
 module Product = struct
+  let t_of_json _ = failwith ""
   type t = {
     product_name : string;
     manufacturer : string;
@@ -68,6 +69,7 @@ module Product = struct
 end
 
 module Listing = struct
+  let t_of_json _ = failwith ""
   type t = {
     title : string;
     manufacturer : string;
@@ -123,49 +125,78 @@ let (products, listings) =
      parser_of ~parse:Listing.of_json ~bucket:listing_bucket
        ~get_m:(fun {Listing.manufacturer;_} -> manufacturer)))
 
-let unify_manufacturers () = 
+let unify_manufacturers
+  = fun () -> 
   let threshold = Fine_structure.manufacturer_match in
   let vectorize l = l |> Token.tokenize |> V.of_list in
   let matched = ref String.Set.empty in
   let listing_manus = Hashtbl.keys listing_bucket in
   let results =
     product_bucket |> Hashtbl.fold ~init:[] ~f:(fun ~key:manup ~data:prod c ->
-      let vp = vectorize manup in
-      let matches = 
-        listing_manus
-        |> List.filter_map ~f:(fun manul ->
-            if (V.cos_theta (vectorize manul) vp) > threshold
-            then begin
-              matched := Set.add (!matched) manul;
-              Some (manup, manul)
-            end
-            else None)
-      in matches @ c) |> ref in
+        let vp = vectorize manup in
+        let matches = 
+          listing_manus
+          |> List.filter_map ~f:(fun manul ->
+              if (V.cos_theta (vectorize manul) vp) > threshold
+              then begin
+                matched := Set.add (!matched) manul;
+                Some (manup, manul)
+              end
+              else None)
+        in matches @ c) |> ref in
   let unmatched = Set.diff (String.Set.of_list (listing_manus)) !matched in
   product_bucket |> Hashtbl.keys |> List.iter ~f:(fun manup -> 
       unmatched |> Set.iter ~f:(fun manul ->
-          results := (manup, manul) :: (!results)));
-      !results
+          results := (manup, manul) :: (!results)))
 
-let match_up manup manuls =
+let unify_manufacturers
+    = fun () ->
+  let threshold = Fine_structure.manufacturer_match in
+  let vectorize l = l |> Token.tokenize |> V.of_list in
+  let matched = ref String.Set.empty in
+  let listing_manus = Hashtbl.keys listing_bucket in
+  let results =
+    product_bucket |> Hashtbl.fold ~init:[] ~f:(fun ~key:manup ~data:prod c ->
+        let vp = vectorize manup in
+        let matches = 
+          listing_manus
+          |> List.filter_map ~f:(fun manul ->
+              if (V.cos_theta (vectorize manul) vp) > threshold
+              then begin
+                matched := Set.add (!matched) manul;
+                Some (manul)
+              end
+              else None)
+        in (manup, matches) :: c) |> List.map ~f:(fun (manup, matches) ->
+        ([manup], matches))
+  in
+  let unmatched = Set.diff (String.Set.of_list (listing_manus)) !matched in
+  (product_bucket |> Hashtbl.keys, unmatched |> Set.to_list) :: results
+
+let slice_by_manufacturers ~source manufacturers = 
+  manufacturers |> List.concat_map ~f:(fun l -> (find_bucket source l))
+
+let listings_by_manufacturer = slice_by_manufacturers ~source:listing_bucket
+let products_by_manufacturer = slice_by_manufacturers ~source:product_bucket
+
+let match_up products listings =
   let matches = ref 0 in
   (* collect matches in this hash table *)
   let products_classifier = String.Table.create ~size:50 () in
   (* pre compute vectors for products *)
-  let products = find_bucket product_bucket manup 
+  let products = products 
                  |> List.map ~f:(fun x -> (x, Product.to_vector x)) in
-  manuls |> List.iter ~f:(fun manul ->
-      (find_bucket listing_bucket manul) |> List.iter ~f:(fun listing ->
-          let listing_v = Listing.to_vector listing in
-          let ((product,_),cos) =
-            List.max_by products ~f:(fun (_,pv) -> V.cos_theta listing_v pv) in
-          if cos > Fine_structure.listing_match then begin
-            let product_matches =  Hashtbl.find_or_add products_classifier
-                product.Product.product_name
-                ~default:(fun () -> ref []) in
-            product_matches := listing::(!product_matches);
-            incr matches;
-          end));
+  listings |> List.iter ~f:(fun listing -> 
+      let listing_v = Listing.to_vector listing in
+      let ((product,_),cos) =
+        List.max_by products ~f:(fun (_,pv) -> V.cos_theta listing_v pv) in
+      if cos > Fine_structure.listing_match then begin
+        let product_matches =  Hashtbl.find_or_add products_classifier
+            product.Product.product_name
+            ~default:(fun () -> ref []) in
+        product_matches := listing::(!product_matches);
+        incr matches;
+      end);
   let res = products |> List.filter_map ~f:(fun (product, _) ->
       let product_name = product.Product.product_name in
       (Hashtbl.find products_classifier product_name) 
@@ -175,12 +206,11 @@ let match_up manup manuls =
 
 let () = 
   let open List in
-  let manus = unify_manufacturers () in
-
-  let matches = Parmap.L(manus |> List.group_by ~f:fst)
-                |> Parmap.parmap ~ncores
-                  (fun (p, pairs) -> let ls = List.map pairs ~f:snd in
-                    match_up p ls) in
+  let buckets = unify_manufacturers () in
+  let matches = 
+    Parmap.L(buckets) |> Parmap.parmap ~ncores (fun (prs, ls) ->
+        match_up (products_by_manufacturer prs)
+                 (listings_by_manufacturer ls)) in
   printf "In total matched: %d\n"
     (List.fold_left ~init:0 ~f:(fun acc matches -> 
          acc + (snd matches)) matches);

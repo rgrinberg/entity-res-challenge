@@ -2,7 +2,7 @@
 (* the reason why we put these constants in a separate module is so that
    changing these constants will not require a re-compilation of everything*)
 let manufacturer_match = 0.25
-let listing_match = 0.1599
+let listing_match = 0.08
 let ncores =
   (* stolen from:
      http://stackoverflow.com/questions/16269393/ \
